@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify, g
 import os, json
 from dotenv import load_dotenv
 load_dotenv()
-from pyfcm import FCMNotification
 
 import pymongo
 from bson.objectid import ObjectId
@@ -47,7 +46,6 @@ def login():
         return jsonify({'error': 'invalid request'}), 400
     username = request.json['username']
     password = request.json['password']
-    fcmToken = request.json['fcmToken'] if 'fcmToken' in request.json else None
 
     db = mongo['hcgateway']
     usrStore = db['users']
@@ -74,12 +72,6 @@ def login():
         ph.verify(user['password'], password)
     except: 
         return jsonify({'error': 'invalid password'}), 403
-   
-    if fcmToken:
-        try:
-            usrStore.update_one({'username': username}, {"$set": {'fcmToken': fcmToken}})
-        except:
-            return jsonify({'error': 'failed to update fcm token'}), 500
         
     sessid = user['_id']
 
@@ -222,18 +214,22 @@ def fetch(method):
 
     hashed_password = user['password']
     key = base64.urlsafe_b64encode(hashed_password.encode("utf-8").ljust(32)[:32])
-    fernet = Fernet(key)
+    fernet = Fernet(key) 
 
-    if not "queries" in request.json:
-        queries = []
-    else:
-        queries = request.json['queries']
+    queries = request.json.get('queries', {})
+    fetch_limit = request.json.get('limit', 0)
     
     db = mongo['hcgateway_'+userid]
     collection = db[method]
     
-    docs = []
-    for doc in collection.find(queries):
+    docs =[]
+
+    cursor = collection.find(queries).sort("end", -1) 
+    
+    if fetch_limit > 0:
+        cursor = cursor.limit(fetch_limit)
+
+    for doc in cursor:
         doc['data'] = json.loads(fernet.decrypt(doc['data'].encode()).decode())
         docs.append(doc)
 
@@ -265,20 +261,6 @@ def pushData(method):
     try: user = usrStore.find_one({'_id': userid})
     except InvalidId: return jsonify({'error': 'invalid user id'}), 400
 
-    fcmToken = user['fcmToken'] if 'fcmToken' in user else None
-    if not fcmToken:
-        return jsonify({'error': 'no fcm token found'}), 404
-
-    fcm = FCMNotification(service_account_file='service-account.json', project_id=os.environ['FCM_PROJECT_ID'])
-
-    try:
-        fcm.notify(fcm_token=fcmToken, data_payload={
-            "op": "PUSH",
-            "data": json.dumps(data),
-        })
-    except Exception as e:
-        return jsonify({'error': 'Message delivery failed'}), 500
-
     return jsonify({'success': True, "message": "request has been sent to device."}), 200
 
 @v2.route("/delete/<method>", methods=['DELETE'])
@@ -301,26 +283,7 @@ def delData(method):
     try: user = usrStore.find_one({'_id': userid})
     except InvalidId: return jsonify({'error': 'invalid user id'}), 400
 
-    fcmToken = user['fcmToken'] if 'fcmToken' in user else None
-    if not fcmToken:
-        return jsonify({'error': 'no fcm token found'}), 404
-
-    fcm = FCMNotification(service_account_file='service-account.json', project_id=os.environ['FCM_PROJECT_ID'])
-
-    try:
-        fcm.notify(fcm_token=fcmToken, data_payload={
-            "op": "DEL",
-            "data": json.dumps({
-                "uuids": uuids,
-                "recordType": fixedMethodName
-            }),
-        })
-    except Exception as e:
-        return jsonify({'error': 'Message delivery failed'}), 500
-
-
     return jsonify({'success': True, "message": "request has been sent to device."}), 200
-
 
 @v2.delete("/sync/<method>")
 def delFromDb(method):

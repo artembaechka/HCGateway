@@ -1,7 +1,5 @@
 # HCGateway
-HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API. You can view the documentation for the REST API [here](https://hcgateway.shuchir.dev/)
-
-<a href="https://www.buymeacoffee.com/shuchir" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a> 
+HCGateway is a platform to let developers connect to the Health Connect API on Android via a REST API
 
 # How it works
 The platform consists of two parts:
@@ -16,57 +14,17 @@ The platform consists of two parts:
 
 
 ## How it Works
-- The mobile application pings the server every 2 hours to send data. The following data types are supported-
-    - Active Calories Burned (`activeCaloriesBurned`)
-    - Basal Body Temperature (`basalBodyTemperature`)
-    - Basal Metabolic Rate (`basalMetabolicRate`)
-    - Blood Glucose (`bloodGlucose`)
-    - Blood Pressure (`bloodPressure`)
-    - Body Fat (`bodyFat`)
-    - Body Temperature (`bodyTemperature`)
-    - Bone Mass (`boneMass`)
-    - Cervical Mucus (`cervicalMucus`)
-    - Distance (`distance`)
-    - Exercise (`exerciseSession`)
-    - Elevation Gained (`elevationGained`)
-    - Floors Climbed (`floorsClimbed`)
-    - Heart Rate (`heartRate`)
-    - Height (`height`)
-    - Hydration (`hydration`)
-    - Lean Body Mass (`leanBodyMass`)
-    - Menstruation Flow (`menstruationFlow`)
-    - Menstruation Period (`menstruationPeriod`)
-    - Nutrition (`nutrition`)
-    - Ovulation Test (`ovulationTest`)
-    - Oxygen Saturation (`oxygenSaturation`)
-    - Power (`power`)
-    - Respiratory Rate (`respiratoryRate`)
-    - Resting Heart Rate (`restingHeartRate`)
+- The mobile application pings the server every 1 hour to send data. The following data types are supported-
     - Sleep (`sleepSession`)
-    - Speed (`speed`)
-    - Steps (`steps`)
-    - StepsCadence (`stepsCadence`)
-    - Total Calories Burned (`totalCaloriesBurned`)
-    - VO2 Max (`vo2Max`)
-    - Weight (`weight`)
-    - Wheelchair Pushes (`wheelchairPushes`)
 
-Support for more types is planned for the future.
-
-- Each sync takes approximatly 15 minutes
+- Each sync takes approximatly 1 minute
 - The server encrypts the data using Fernet encryption, then stores it in a mongo database.
 - The server exposes an API to let developers login and get the data for their users.
 
-The platform allows two-way sync, which means you can make changes to your local Health Connect store remotely via REST api.
-
 ## Get Started
-- There is a live instance hosted at https://api.hcgateway.shuchir.dev/ that you can use. You can also host your own instance. To learn more on Self Hosting, skip down to the Self Hosting section.
-> [!IMPORTANT]
-> **Use the hosted instance at your own risk. By using the hosted server, you acknowledge all responsibility is waived from the server owner.**
 - You can install the mobile application through the APK file. You can find the latest APK file in the releases section of this repository.
-- The minimum requirement for the APK file is Android Oreo (8.0)
 - Once you install the Android APK file, signup by entering a username and password
-- Once you see a screen showing your user id, you have successfully signed up. Your data will sync in 2 hours. This is customizable. You also have the option to force a sync any time through the application.
+- Once you see a screen showing state, you have successfully signed up. Your data will sync in 1 hour. You also have the option to force a sync any time through the application.
 
 ## Database
 ### Users Structure
@@ -106,20 +64,11 @@ hcgateway_[user_id]: string {
 - `end` - The end date and time of the object. Might not be present for some objects.
 - `app` - The app package string that the object was synced from.
 
-
-## REST API
-The documentation for the REST API can be found at https://hcgateway.shuchir.dev/
-
 ## Mobile Application
-The mobile application is a simple Android application that pings the server every 2 hours (customizable) to send data. It starts a foreground service to do this, and the service will run even if the application is closed. The application is written in React Native.
+The mobile application is a simple Android application that pings the server every 1 hour to send data. It starts a foreground service to do this, and the service will run even if the application is closed. The application is written in ~~React Native~~ **FUCK YOU!!** This app works on Kotlin, on fucking native Android Language without trash with expo and JS.
 
 ## Self Hosting
-You can self host the server and database for full control. However, if you'd like to push from your own server, you must build the mobile application yourself. You can find the instructions to build the mobile application below. This is because the app is packaged with the firebase key, and cannot change it dynamically. Again, firebase is only necessary if you want to push from your own server.
-### Firebase
-Follow these steps to set up Firebase:
-1. Create a new Firebase project at https://console.firebase.google.com/
-2. Add an Android app to the project
-3. Download the `google-services.json` file and place it in the `firebase/` folder as well as the `android/app/` folder
+You can self host the server and database for full control.
 
 ### Docker (recommended)
 1. **Prerequisites**\
@@ -130,9 +79,7 @@ Follow these steps to set up Firebase:
    - You’ll need to configure environment variables before starting the services.
    - Copy the provided `.env.example` file to `.env` inside the `api/` directory and configure it as necessary. When setting the `MONGO_URI` variable, the following format should be used: `mongodb://<username>:<password>@db:27017/hcgateway?authSource=admin`
    - Set the mongo DB username and password in the `docker-compose.yml` file as well.
-
-    - Visit the firebase console > project settings > Service accounts and click generate new private key
-    - Save the file as `service-account.json` in the `api/` folder
+   - Configure IP whitelist for server in `nginx/nginx.conf:52`. It necessary if you fetching api from remote server
 
 3. **Running the Containers with Docker Compose**\
     The project uses Docker Compose for easier container orchestration. To run the API using Docker Compose, run the following command:
@@ -148,25 +95,14 @@ You can access the API at `http://localhost:6644`
 - `cd` into the api/ folder
 - run `pip install -r requirements.txt`
 - rename `.env.example` to `.env` and fill in the values
-- Visit the firebase console > project settings > Service accounts and click generate new private key
-- Save the file as `service-account.json` in the `api/` folder
 - run `python3 main.py` to start the server
 
 #### Mobile Application
-- Prerequisites: Node.js 18+, npm, Android Studio (SDK, build-tools, platform-tools), Java 17
-- in another window/tab, `cd` into the app/ folder
-- run `npm install`
-- If you wish to remove sentry:
-```
-yarn remove @sentry/react-native
-npx @sentry/wizard -i reactNative -p android --uninstall
-```
-- If you wish to change sentry to your own instance:
-    - Change the `dsn` in `App.js` to your own DSN
-    - Change the server, org name, and project name in app.json
-    - Change these details again in android/sentry.properties
-    - Change the DSN in the AndroidManifest.xml
-- run `npx patch-package` to apply a patch to the foreground service library
-- run `npm run android` to start the application, or `cd android && ./gradlew assembleRelease` to build the APK file
-    - It is also possible to now use eas build to build the APK file. You can find more at https://docs.expo.dev/build/eas-build/ **NOTE: This must be a local build, since you need to run patch-package before building the APK file.**
+- Prerequisites: Android Studio (SDK, build-tools, platform-tools), Java 17
+- Clone this repository
+- `cd` into app_new/ folder
+- Change API server in `app/build.gradle.kts:20`
+- run `./gradlew assembleRelease` to build the APK file
+
+idk what write to app building, it basic android app, nothing dificult
 

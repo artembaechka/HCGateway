@@ -1,18 +1,18 @@
-
 services:
   api:
     image: ghcr.io/shuchirj/hcgateway:latest
-    ports:
-      - "6644:6644"
     env_file:
       - ./api/.env
     container_name: hcgateway_api
     restart: always
-    volumes:
-      - ./api/service-account.json:/app/service-account.json
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    depends_on:
+      - db
 
   db:
-    image: mongo
+    image: mongo:7.0
     restart: always
     ports:
       - "27017:27017"
@@ -21,4 +21,16 @@ services:
     container_name: hcgateway_db
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_ROOT_PASSWORD: password
+      GLIBC_TUNABLES: glibc.pthread.rseq=0
+
+  nginx:
+    image: nginx:latest
+    restart: always
+    ports:
+      - "6644:80"
+    container_name: nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
