@@ -6,18 +6,17 @@ import dev.baechka.hcgateway.data.api.model.LoginResponse
 import dev.baechka.hcgateway.data.api.model.RefreshRequest
 import dev.baechka.hcgateway.data.local.TokenManager
 import kotlinx.coroutines.runBlocking
-import okhttp3.Authenticator
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import okhttp3.Route
 import java.util.concurrent.TimeUnit
 
 class TokenAuthenticator(
     private val tokenManager: TokenManager
-) : Authenticator {
+) : Interceptor {
     private val gson = Gson()
     private val simpleClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -25,55 +24,64 @@ class TokenAuthenticator(
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    override fun authenticate(route: Route?, response: Response): Request? {
-        if (response.code == 401 || response.code == 403) {
-            return runBlocking {
-                val refreshToken = tokenManager.getRefreshToken() ?: return@runBlocking null
-                val currentToken = tokenManager.getAccessToken()
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        val response = chain.proceed(originalRequest)
 
-                try {
-                    val refreshRequest = RefreshRequest(refreshToken)
-                    val jsonBody = gson.toJson(refreshRequest)
-                    val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
+        // Не пытаемся рефрешить если это сам запрос на refresh
+        if (response.code != 401 && response.code != 403) return response
+        if (originalRequest.url.toString().endsWith("refresh")) return response
 
-                    val requestBuilder = Request.Builder()
-                        .url("${BuildConfig.BASE_URL}refresh")
-                        .post(requestBody)
+        return runBlocking {
+            val refreshToken = tokenManager.getRefreshToken()
+            if (refreshToken == null) {
+                return@runBlocking response
+            }
 
-                    if (currentToken != null) {
-                        requestBuilder.header("Authorization", "Bearer $currentToken")
-                    }
+            val currentToken = tokenManager.getAccessToken()
 
-                    val request = requestBuilder.build()
+            try {
+                val requestBody = gson.toJson(RefreshRequest(refreshToken))
+                    .toRequestBody("application/json".toMediaType())
 
-                    val refreshResponse = simpleClient.newCall(request).execute()
+                val requestBuilder = Request.Builder()
+                    .url("${BuildConfig.BASE_URL}refresh")
+                    .post(requestBody)
 
-                    if (refreshResponse.isSuccessful) {
-                        val body = refreshResponse.body?.string()
-                        val loginResponse = gson.fromJson(body, LoginResponse::class.java)
-
-                        if (loginResponse != null) {
-                            tokenManager.saveTokens(
-                                loginResponse.token,
-                                loginResponse.refresh,
-                                loginResponse.expiry
-                            )
-
-                            return@runBlocking response.request.newBuilder()
-                                .header("Authorization", "Bearer ${loginResponse.token}")
-                                .build()
-                        }
-                    } else {
-                        tokenManager.clearTokens()
-                    }
-                } catch (e: Exception) {
-                    tokenManager.clearTokens()
+                if (currentToken != null) {
+                    requestBuilder.header("Authorization", "Bearer $currentToken")
                 }
 
-                null
-            }
-        }
+                val refreshResponse = simpleClient.newCall(requestBuilder.build()).execute()
 
-        return null
+                if (refreshResponse.isSuccessful) {
+                    val loginResponse = gson.fromJson(
+                        refreshResponse.body?.string(),
+                        LoginResponse::class.java
+                    )
+
+                    if (loginResponse != null) {
+                        tokenManager.saveTokens(
+                            loginResponse.token,
+                            loginResponse.refresh,
+                            loginResponse.expiry
+                        )
+
+                        response.close()
+                        return@runBlocking chain.proceed(
+                            originalRequest.newBuilder()
+                                .header("Authorization", "Bearer ${loginResponse.token}")
+                                .build()
+                        )
+                    }
+                }
+
+                tokenManager.clearTokens()
+            } catch (_: Exception) {
+                tokenManager.clearTokens()
+            }
+
+            response
+        }
     }
 }
